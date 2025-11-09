@@ -1,15 +1,18 @@
 import requests
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta, timezone
-import pytz  # For time zone conversion
+import pytz
+from matplotlib.widgets import TextBox, Button
+from matplotlib.patches import Rectangle
+import numpy as np
 
 
 # Define the time range for today in UTC
 now = datetime.now(timezone.utc)
-start = now.replace(hour=0, minute=0, second=0, microsecond=0)  # Start of today
-end = start + timedelta(days=1) - timedelta(seconds=1)          # End of today
+start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+end = start + timedelta(days=1) - timedelta(seconds=1)
 
-# Format the start and end times for the API (truncate to seconds)
+# Format the start and end times for the API
 start_str = start.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
 end_str = end.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
 
@@ -19,7 +22,6 @@ api_url = f"https://dashboard.elering.ee/api/nps/price?start={start_str}&end={en
 # Fetch data from the API
 response = requests.get(api_url)
 
-# Check if the request succeeded
 if response.status_code != 200:
     print(f"Error: Received status code {response.status_code} from API")
     print("Response content:", response.text)
@@ -27,44 +29,229 @@ if response.status_code != 200:
 
 data = response.json()
 
-# Extract prices for Estonia ("ee")
+# Extract prices for Estonia
 if "data" in data and "ee" in data["data"]:
-    estonia_data = dat
+    estonia_data = data["data"]["ee"]
+else:
     print("Error: 'ee' key not found in API response.")
     exit()
 
 # Prepare data for plotting
 timestamps = []
 prices = []
-
-# Define the target time zone (e.g., UTC+2)
-local_tz = pytz.timezone("Europe/Tallinn")  # Adjust this to your local time zone
+local_tz = pytz.timezone("Europe/Tallinn")
 
 for entry in estonia_data:
     if "timestamp" in entry and "price" in entry:
-        # Convert UNIX timestamp to a UTC datetime object
         utc_time = datetime.fromtimestamp(entry["timestamp"], tz=timezone.utc)
-        # Convert to local time zone
         local_time = utc_time.astimezone(local_tz)
-        price = entry["price"]
+        # Convert price from €/MWh to cents/kWh
+        price = entry["price"] / 10
         timestamps.append(local_time)
         prices.append(price)
 
-# Debug: Ensure data is being extracted correctly
 print("Extracted Timestamps (Local):", timestamps)
 print("Extracted Prices:", prices)
 
-# Ensure there is data to plot
 if not timestamps or not prices:
     print("No data available to plot.")
     exit()
 
-# Create the bar chart
-plt.figure(figsize=(12, 6))
-plt.bar([ts.strftime("%H:%M") for ts in timestamps], prices, color='skyblue')
-plt.xlabel("Hour of the Day (Local Time)")
-plt.ylabel("Electricity Price (€/MWh)")
-plt.title("Hourly Electricity Prices for Today (Estonia - Local Time)")
-plt.xticks(rotation=45)
-plt.tight_layout()
+# Store original prices
+original_prices = prices.copy()
+
+# Initial price rows configuration
+price_rows = [
+    {'start': 22, 'end': 6, 'price': 3.03},
+    {'start': 7, 'end': 8, 'price': 5.29},
+    {'start': 9, 'end': 11, 'price': 8.18},
+    {'start': 12, 'end': 15, 'price': 5.29},
+    {'start': 16, 'end': 19, 'price': 8.18},
+    {'start': 20, 'end': 21, 'price': 5.29},
+]
+
+# Store UI widgets
+ui_widgets = {'rows': []}
+
+def calculate_adjusted_prices():
+    """Calculate adjusted prices based on all price rows"""
+    adjusted = original_prices.copy()
+    for i, ts in enumerate(timestamps):
+        hour = ts.hour
+        for row in price_rows:
+            if is_hour_in_range(hour, row['start'], row['end']):
+                adjusted[i] += row['price']
+    return adjusted
+
+def is_hour_in_range(hour, start, end):
+    """Check if hour is in range, handling overnight periods"""
+    if start <= end:
+        return start <= hour <= end
+    else:  # Overnight range (e.g., 22:00 to 6:00)
+        return hour >= start or hour <= end
+
+def create_stacked_bars():
+    """Create stacked bars with color coding"""
+    ax.clear()
+    hour_labels = [ts.strftime("%H") for ts in timestamps]
+    x_positions = np.arange(len(timestamps))
+
+    adjusted_prices = calculate_adjusted_prices()
+
+    # For each hour, create stacked bars
+    for i, (ts, base_price) in enumerate(zip(timestamps, original_prices)):
+        hour = ts.hour
+        total_adjustment = 0
+
+        # Calculate total adjustment for this hour
+        for row in price_rows:
+            if is_hour_in_range(hour, row['start'], row['end']):
+                total_adjustment += row['price']
+
+        # Determine base color (blue if lower, green if higher than adjustment)
+        if base_price < total_adjustment:
+            base_color = 'blue'
+        else:
+            base_color = 'green'
+
+        # Draw base price bar
+        ax.bar(i, base_price, width=0.8, color=base_color, edgecolor='black', linewidth=0.5)
+
+        # Draw adjustment bar (red) on top
+        if total_adjustment > 0:
+            ax.bar(i, total_adjustment, width=0.8, bottom=base_price,
+                   color='red', edgecolor='black', linewidth=0.5)
+
+    # Set x-axis to show only full hours
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(hour_labels)
+    ax.set_xlabel("Hour of the Day (Local Time)")
+    ax.set_ylabel("Electricity Price (cents/kWh)")
+    ax.set_title("Hourly Electricity Prices for Today (Estonia - Local Time)")
+
+    fig.canvas.draw_idle()
+
+def redraw_controls():
+    """Redraw the control panel with current price rows"""
+    # Clear existing controls
+    for widget_list in ui_widgets['rows']:
+        for widget in widget_list:
+            if hasattr(widget, 'disconnect_events'):
+                widget.disconnect_events()
+    ui_widgets['rows'].clear()
+
+    # Clear axes
+    for ax_widget in fig.get_axes()[1:]:
+        ax_widget.remove()
+
+    # Recreate control panel
+    num_rows = len(price_rows)
+    row_height = 0.04
+    start_y = 0.12
+
+    for idx, row_data in enumerate(price_rows):
+        y_pos = start_y - (idx * row_height)
+
+        # Start time
+        ax_start = plt.axes([0.05, y_pos, 0.06, 0.03])
+        start_box = TextBox(ax_start, '', initial=str(row_data['start']))
+
+        # End time
+        ax_end = plt.axes([0.13, y_pos, 0.06, 0.03])
+        end_box = TextBox(ax_end, '', initial=str(row_data['end']))
+
+        # Price
+        ax_price = plt.axes([0.21, y_pos, 0.08, 0.03])
+        price_box = TextBox(ax_price, '', initial=f"{row_data['price']:.2f}")
+
+        # Delete button
+        ax_del = plt.axes([0.31, y_pos, 0.03, 0.03])
+        del_button = Button(ax_del, 'X')
+
+        def make_update_handler(index):
+            def handler(text):
+                try:
+                    price_rows[index]['start'] = int(ui_widgets['rows'][index][0].text)
+                    price_rows[index]['end'] = int(ui_widgets['rows'][index][1].text)
+                    price_rows[index]['price'] = round(float(ui_widgets['rows'][index][2].text), 2)
+                    create_stacked_bars()
+                except (ValueError, IndexError):
+                    pass
+            return handler
+
+        def make_delete_handler(index):
+            def handler(event):
+                if len(price_rows) > 1:
+                    price_rows.pop(index)
+                    redraw_controls()
+                    create_stacked_bars()
+            return handler
+
+        start_box.on_submit(make_update_handler(idx))
+        end_box.on_submit(make_update_handler(idx))
+        price_box.on_submit(make_update_handler(idx))
+        del_button.on_clicked(make_delete_handler(idx))
+
+        ui_widgets['rows'].append([start_box, end_box, price_box, del_button])
+
+    # Add "Lisa rida" button
+    add_y = start_y - (num_rows * row_height) - 0.01
+    ax_add = plt.axes([0.05, add_y, 0.10, 0.03])
+    add_button = Button(ax_add, 'Lisa rida')
+
+    def add_row(event):
+        price_rows.append({'start': 0, 'end': 23, 'price': 0.0})
+        redraw_controls()
+        create_stacked_bars()
+
+    add_button.on_clicked(add_row)
+    ui_widgets['add_button'] = add_button
+
+    # Add column headers
+    fig.text(0.05, start_y + 0.02, 'Start', fontsize=9, weight='bold')
+    fig.text(0.13, start_y + 0.02, 'End', fontsize=9, weight='bold')
+    fig.text(0.21, start_y + 0.02, 'Price (cents)', fontsize=9, weight='bold')
+
+    fig.canvas.draw_idle()
+
+# Create figure
+fig = plt.figure(figsize=(14, 10))
+ax = fig.add_subplot(111)
+ax.set_position([0.08, 0.35, 0.88, 0.60])
+
+# Initial chart
+create_stacked_bars()
+
+# Add hover functionality
+annot = ax.annotate("", xy=(0,0), xytext=(20,20), textcoords="offset points",
+                    bbox=dict(boxstyle="round", fc="w", alpha=0.9),
+                    arrowprops=dict(arrowstyle="->"))
+annot.set_visible(False)
+
+def on_hover(event):
+    """Display time and price when hovering over a bar"""
+    if event.inaxes == ax:
+        for i, ts in enumerate(timestamps):
+            # Check if mouse is over this bar
+            if abs(event.xdata - i) < 0.4:
+                time_str = ts.strftime("%H:00")
+                base_price = original_prices[i]
+                adjusted = calculate_adjusted_prices()[i]
+
+                annot.xy = (i, adjusted)
+                text = f"Time: {time_str}\nBase: {base_price:.2f} cents/kWh\nTotal: {adjusted:.2f} cents/kWh"
+                annot.set_text(text)
+                annot.set_visible(True)
+                fig.canvas.draw_idle()
+                return
+
+        if annot.get_visible():
+            annot.set_visible(False)
+            fig.canvas.draw_idle()
+
+fig.canvas.mpl_connect("motion_notify_event", on_hover)
+
+# Draw controls
+redraw_controls()
+
 plt.show()
