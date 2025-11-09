@@ -148,32 +148,34 @@ def redraw_controls():
                 widget.disconnect_events()
     ui_widgets['rows'].clear()
 
-    # Clear axes
+    # Clear axes (except main chart)
     for ax_widget in fig.get_axes()[1:]:
         ax_widget.remove()
 
-    # Recreate control panel
+    # Recreate control panel on the left side
     num_rows = len(price_rows)
     row_height = 0.04
-    start_y = 0.12
+    start_y = 0.85  # Start from top
+    left_margin = 0.02
+    col_width = 0.05
 
     for idx, row_data in enumerate(price_rows):
         y_pos = start_y - (idx * row_height)
 
         # Start time
-        ax_start = plt.axes([0.05, y_pos, 0.06, 0.03])
+        ax_start = plt.axes([left_margin, y_pos, col_width, 0.03])
         start_box = TextBox(ax_start, '', initial=str(row_data['start']))
 
         # End time
-        ax_end = plt.axes([0.13, y_pos, 0.06, 0.03])
+        ax_end = plt.axes([left_margin + col_width + 0.01, y_pos, col_width, 0.03])
         end_box = TextBox(ax_end, '', initial=str(row_data['end']))
 
         # Price
-        ax_price = plt.axes([0.21, y_pos, 0.08, 0.03])
+        ax_price = plt.axes([left_margin + 2 * (col_width + 0.01), y_pos, col_width + 0.02, 0.03])
         price_box = TextBox(ax_price, '', initial=f"{row_data['price']:.2f}")
 
         # Delete button
-        ax_del = plt.axes([0.31, y_pos, 0.03, 0.03])
+        ax_del = plt.axes([left_margin + 2 * (col_width + 0.01) + col_width + 0.03, y_pos, 0.025, 0.03])
         del_button = Button(ax_del, 'X')
 
         def make_update_handler(index):
@@ -204,7 +206,7 @@ def redraw_controls():
 
     # Add "Lisa rida" button
     add_y = start_y - (num_rows * row_height) - 0.01
-    ax_add = plt.axes([0.05, add_y, 0.10, 0.03])
+    ax_add = plt.axes([left_margin, add_y, 0.10, 0.03])
     add_button = Button(ax_add, 'Lisa rida')
 
     def add_row(event):
@@ -216,16 +218,18 @@ def redraw_controls():
     ui_widgets['add_button'] = add_button
 
     # Add column headers
-    fig.text(0.05, start_y + 0.02, 'Start', fontsize=9, weight='bold')
-    fig.text(0.13, start_y + 0.02, 'End', fontsize=9, weight='bold')
-    fig.text(0.21, start_y + 0.02, 'Price (cents)', fontsize=9, weight='bold')
+    header_y = start_y + 0.02
+    fig.text(left_margin + 0.015, header_y, 'Start', fontsize=9, weight='bold')
+    fig.text(left_margin + col_width + 0.015, header_y, 'End', fontsize=9, weight='bold')
+    fig.text(left_margin + 2 * (col_width + 0.01) + 0.015, header_y, 'Price (cents)', fontsize=9, weight='bold')
 
     fig.canvas.draw_idle()
 
-# Create figure
-fig = plt.figure(figsize=(14, 10))
+# Create figure with chart on the right
+fig = plt.figure(figsize=(16, 10))
 ax = fig.add_subplot(111)
-ax.set_position([0.08, 0.25, 0.88, 0.70])
+# Position: [left, bottom, width, height]
+ax.set_position([0.25, 0.10, 0.72, 0.85])
 
 # Initial chart
 create_stacked_bars()
