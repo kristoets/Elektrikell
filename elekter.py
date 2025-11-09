@@ -29,8 +29,7 @@ data = response.json()
 
 # Extract prices for Estonia ("ee")
 if "data" in data and "ee" in data["data"]:
-    estonia_data = data["data"]["ee"]  # Extract Estonia data
-else:
+    estonia_data = dat
     print("Error: 'ee' key not found in API response.")
     exit()
 
