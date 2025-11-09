@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime, timedelta, timezone
 import pytz  # For time zone conversion
 
+
 # Define the time range for today in UTC
 now = datetime.now(timezone.utc)
 start = now.replace(hour=0, minute=0, second=0, microsecond=0)  # Start of today
