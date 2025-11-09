@@ -93,7 +93,6 @@ def is_hour_in_range(hour, start, end):
 def create_stacked_bars():
     """Create stacked bars with color coding"""
     ax.clear()
-    hour_labels = [ts.strftime("%H") for ts in timestamps]
     x_positions = np.arange(len(timestamps))
 
     adjusted_prices = calculate_adjusted_prices()
@@ -122,9 +121,18 @@ def create_stacked_bars():
             ax.bar(i, total_adjustment, width=0.8, bottom=base_price,
                    color='red', edgecolor='black', linewidth=0.5)
 
-    # Set x-axis to show only full hours
-    ax.set_xticks(x_positions)
-    ax.set_xticklabels(hour_labels)
+    # Show only full hour marks on x-axis
+    # Keep all bars but only label full hours
+    full_hour_positions = []
+    full_hour_labels = []
+    for i, ts in enumerate(timestamps):
+        if ts.minute == 0:  # Only full hours
+            full_hour_positions.append(i)
+            full_hour_labels.append(ts.strftime("%H"))
+
+    ax.set_xticks(full_hour_positions)
+    ax.set_xticklabels(full_hour_labels, rotation=90)
+    ax.set_xlim(-0.5, len(timestamps) - 0.5)  # Ensure all bars are visible
     ax.set_xlabel("Hour of the Day (Local Time)")
     ax.set_ylabel("Electricity Price (cents/kWh)")
     ax.set_title("Hourly Electricity Prices for Today (Estonia - Local Time)")
@@ -217,7 +225,7 @@ def redraw_controls():
 # Create figure
 fig = plt.figure(figsize=(14, 10))
 ax = fig.add_subplot(111)
-ax.set_position([0.08, 0.35, 0.88, 0.60])
+ax.set_position([0.08, 0.25, 0.88, 0.70])
 
 # Initial chart
 create_stacked_bars()
