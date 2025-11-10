@@ -7,10 +7,11 @@ from matplotlib.patches import Rectangle
 import numpy as np
 
 
-# Define the time range for today in UTC
+# Define the time range from today to tomorrow midnight in UTC
 now = datetime.now(timezone.utc)
 start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-end = start + timedelta(days=1) - timedelta(seconds=1)
+# End at tomorrow's midnight
+end = start + timedelta(days=2) - timedelta(seconds=1)
 
 # Format the start and end times for the API
 start_str = start.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
@@ -41,17 +42,37 @@ timestamps = []
 prices = []
 local_tz = pytz.timezone("Europe/Tallinn")
 
+# Get today's date in local timezone for comparison
+today_local = datetime.now(local_tz).date()
+tomorrow_local = today_local + timedelta(days=1)
+
+# Track if we have valid tomorrow prices
+tomorrow_has_data = False
+
 for entry in estonia_data:
     if "timestamp" in entry and "price" in entry:
         utc_time = datetime.fromtimestamp(entry["timestamp"], tz=timezone.utc)
         local_time = utc_time.astimezone(local_tz)
+        local_date = local_time.date()
+
         # Convert price from €/MWh to cents/kWh
         price = entry["price"] / 10
-        timestamps.append(local_time)
-        prices.append(price)
+
+        # Check if this is tomorrow's data
+        if local_date == tomorrow_local:
+            # Only add tomorrow's data if price is valid (not None, not 0)
+            if price is not None and price != 0:
+                tomorrow_has_data = True
+                timestamps.append(local_time)
+                prices.append(price)
+        else:
+            # Always add today's data
+            timestamps.append(local_time)
+            prices.append(price)
 
 print("Extracted Timestamps (Local):", timestamps)
 print("Extracted Prices:", prices)
+print(f"Tomorrow's data available: {tomorrow_has_data}")
 
 if not timestamps or not prices:
     print("No data available to plot.")
