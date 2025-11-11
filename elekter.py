@@ -111,12 +111,72 @@ def is_hour_in_range(hour, start, end):
     else:  # Overnight range (e.g., 22:00 to 6:00)
         return hour >= start or hour <= end
 
+def find_cheapest_5h_window():
+    """Find the cheapest 5 consecutive full hours starting from current time"""
+    current_time = datetime.now(local_tz)
+
+    # Get indices of all full hours (minute == 0)
+    full_hour_indices = [i for i, ts in enumerate(timestamps) if ts.minute == 0]
+
+    if len(full_hour_indices) < 5:
+        return set()  # Not enough full hours
+
+    # Find the first full hour index at or after current time
+    current_full_hour_idx = None
+    for idx in full_hour_indices:
+        if timestamps[idx] >= current_time:
+            current_full_hour_idx = idx
+            break
+
+    if current_full_hour_idx is None:
+        return set()  # No future full hours
+
+    adjusted_prices = calculate_adjusted_prices()
+
+    # Find cheapest 5-hour window using only full hours from current time onwards
+    min_sum = float('inf')
+    min_start_idx = None
+
+    for i in range(len(full_hour_indices) - 4):
+        start_idx = full_hour_indices[i]
+
+        # Skip if this window starts before current time
+        if start_idx < current_full_hour_idx:
+            continue
+
+        # Check if next 4 indices are consecutive full hours (hourly gaps)
+        window_indices = [full_hour_indices[i + j] for j in range(5)]
+
+        # Verify these are 5 consecutive full hours (each 1 hour apart)
+        is_consecutive = True
+        for j in range(4):
+            hour_diff = (timestamps[window_indices[j+1]] - timestamps[window_indices[j]]).total_seconds() / 3600
+            if abs(hour_diff - 1.0) > 0.1:  # Allow small tolerance
+                is_consecutive = False
+                break
+
+        if not is_consecutive:
+            continue
+
+        # Calculate sum of 5 consecutive full hours
+        window_sum = sum(adjusted_prices[idx] for idx in window_indices)
+        if window_sum < min_sum:
+            min_sum = window_sum
+            min_start_idx = i
+
+    if min_start_idx is None:
+        return set()
+
+    # Return set of indices for the cheapest 5 full-hour window
+    return set([full_hour_indices[min_start_idx + j] for j in range(5)])
+
 def create_stacked_bars():
     """Create stacked bars with color coding"""
     ax.clear()
     x_positions = np.arange(len(timestamps))
 
     adjusted_prices = calculate_adjusted_prices()
+    cheapest_hours = find_cheapest_5h_window()
 
     # For each hour, create stacked bars
     for i, (ts, base_price) in enumerate(zip(timestamps, original_prices)):
@@ -128,8 +188,11 @@ def create_stacked_bars():
             if is_hour_in_range(hour, row['start'], row['end']):
                 total_adjustment += row['price']
 
-        # Determine base color (blue if lower, green if higher than adjustment)
-        if base_price < total_adjustment:
+        # Determine base color
+        if i in cheapest_hours:
+            # Golden color for cheapest 4-hour window
+            base_color = 'gold'
+        elif base_price < total_adjustment:
             base_color = 'blue'
         else:
             base_color = 'green'
