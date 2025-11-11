@@ -178,10 +178,16 @@ def create_stacked_bars():
     adjusted_prices = calculate_adjusted_prices()
     cheapest_hours = find_cheapest_5h_window()
 
+    # Get current time to identify current hour
+    current_time = datetime.now(local_tz)
+
     # For each hour, create stacked bars
     for i, (ts, base_price) in enumerate(zip(timestamps, original_prices)):
         hour = ts.hour
         total_adjustment = 0
+
+        # Check if this is the current hour
+        is_current_hour = (ts.hour == current_time.hour and ts.date() == current_time.date())
 
         # Calculate total adjustment for this hour
         for row in price_rows:
@@ -190,12 +196,15 @@ def create_stacked_bars():
 
         # Determine base color
         if i in cheapest_hours:
-            # Golden color for cheapest 4-hour window
-            base_color = 'gold'
+            # Golden color for cheapest 5-hour window
+            base_color = 'gold' if not is_current_hour else 'darkgoldenrod'
         elif base_price < total_adjustment:
-            base_color = 'blue'
+            base_color = 'blue' if not is_current_hour else 'darkblue'
         else:
-            base_color = 'green'
+            base_color = 'green' if not is_current_hour else 'darkgreen'
+
+        # Determine adjustment color (darker red for current hour)
+        adjustment_color = 'darkred' if is_current_hour else 'red'
 
         # Draw base price bar
         ax.bar(i, base_price, width=0.8, color=base_color, edgecolor='black', linewidth=0.5)
@@ -203,7 +212,7 @@ def create_stacked_bars():
         # Draw adjustment bar (red) on top
         if total_adjustment > 0:
             ax.bar(i, total_adjustment, width=0.8, bottom=base_price,
-                   color='red', edgecolor='black', linewidth=0.5)
+                   color=adjustment_color, edgecolor='black', linewidth=0.5)
 
     # Show only full hour marks on x-axis
     # Keep all bars but only label full hours
@@ -306,6 +315,53 @@ def redraw_controls():
     fig.text(left_margin + 0.015, header_y, 'Start', fontsize=9, weight='bold')
     fig.text(left_margin + col_width + 0.015, header_y, 'End', fontsize=9, weight='bold')
     fig.text(left_margin + 2 * (col_width + 0.01) + 0.015, header_y, 'Price (cents)', fontsize=9, weight='bold')
+
+    # Add price information section below "Lisa rida" button
+    info_section_y = add_y - 0.18
+
+    # Get current time and find current price
+    current_time = datetime.now(local_tz)
+    current_price = 0.0
+    current_base = 0.0
+
+    # Find the price at current hour
+    for i, ts in enumerate(timestamps):
+        if ts.hour == current_time.hour and ts.date() == current_time.date():
+            current_base = original_prices[i]
+            adjusted_prices = calculate_adjusted_prices()
+            current_price = adjusted_prices[i]
+            break
+
+    # Display current price
+    fig.text(left_margin, info_section_y + 0.14, 'Current Price:', fontsize=10, weight='bold')
+    fig.text(left_margin, info_section_y + 0.12, f'Total: {current_price:.2f} cents/kWh', fontsize=9)
+
+    # Calculate averages
+    avg_base_price = sum(original_prices) / len(original_prices) if original_prices else 0
+    adjusted_prices = calculate_adjusted_prices()
+    avg_total_price = sum(adjusted_prices) / len(adjusted_prices) if adjusted_prices else 0
+
+    # Calculate average for next 5 hours
+    next_5h_avg = 0.0
+    next_5h_count = 0
+    for i, ts in enumerate(timestamps):
+        if ts >= current_time and next_5h_count < 5:
+            next_5h_avg += adjusted_prices[i]
+            next_5h_count += 1
+    next_5h_avg = next_5h_avg / next_5h_count if next_5h_count > 0 else 0.0
+
+    # Calculate average for cheapest 5 hours
+    cheapest_hours = find_cheapest_5h_window()
+    cheapest_5h_avg = 0.0
+    if cheapest_hours:
+        cheapest_5h_avg = sum(adjusted_prices[i] for i in cheapest_hours) / len(cheapest_hours)
+
+    # Display average prices
+    fig.text(left_margin, info_section_y + 0.10, 'Average Prices:', fontsize=10, weight='bold')
+    fig.text(left_margin, info_section_y + 0.08, f'Next 5h: {next_5h_avg:.2f} cents/kWh', fontsize=9)
+    fig.text(left_margin, info_section_y + 0.06, f'Cheapest 5h: {cheapest_5h_avg:.2f} cents/kWh', fontsize=9)
+    fig.text(left_margin, info_section_y + 0.04, f'Base: {avg_base_price:.2f} cents/kWh', fontsize=9)
+    fig.text(left_margin, info_section_y + 0.02, f'Total: {avg_total_price:.2f} cents/kWh', fontsize=9)
 
     fig.canvas.draw_idle()
 
