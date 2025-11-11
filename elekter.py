@@ -248,7 +248,7 @@ def redraw_controls():
     # Recreate control panel on the left side
     num_rows = len(price_rows)
     row_height = 0.04
-    start_y = 0.85  # Start from top
+    start_y = 0.82  # Start from top (lowered to make room for headers)
     left_margin = 0.02
     col_width = 0.05
 
@@ -310,8 +310,8 @@ def redraw_controls():
     add_button.on_clicked(add_row)
     ui_widgets['add_button'] = add_button
 
-    # Add column headers
-    header_y = start_y + 0.02
+    # Add column headers above the first row
+    header_y = start_y + 0.035
     fig.text(left_margin + 0.015, header_y, 'Start', fontsize=9, weight='bold')
     fig.text(left_margin + col_width + 0.015, header_y, 'End', fontsize=9, weight='bold')
     fig.text(left_margin + 2 * (col_width + 0.01) + 0.015, header_y, 'Price (cents)', fontsize=9, weight='bold')
